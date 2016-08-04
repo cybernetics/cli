@@ -14,6 +14,7 @@ using Microsoft.DotNet.ProjectModel.Server;
 using Microsoft.DotNet.Tools.Build;
 using Microsoft.DotNet.Tools.Compiler;
 using Microsoft.DotNet.Tools.Compiler.Csc;
+using Microsoft.DotNet.Tools.CrossGen;
 using Microsoft.DotNet.Tools.Help;
 using Microsoft.DotNet.Tools.New;
 using Microsoft.DotNet.Tools.NuGet;
@@ -34,6 +35,7 @@ namespace Microsoft.DotNet.Cli
         {
             ["build"] = BuildCommand.Run,
             ["compile-csc"] = CompileCscCommand.Run,
+            ["crossgen"] = CrossGenCommand.Run,
             ["help"] = HelpCommand.Run,
             ["new"] = NewCommand.Run,
             ["nuget"] = NuGetCommand.Run,
