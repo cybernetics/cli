@@ -24,6 +24,7 @@ namespace Microsoft.DotNet.Tools.CrossGen.Outputs
         private readonly bool _generatePDB;
         private readonly List<string> _platformAssembliesPaths;
         private readonly CrossGenCmdUtil _crossGenCmds;
+        private readonly string _targetRID;
 
         protected string OutputDir { get; private set; }
         protected string AppDir { get; private set; }
@@ -33,7 +34,8 @@ namespace Microsoft.DotNet.Tools.CrossGen.Outputs
             AppDir = appDir;
             OutputDir = outputDir;
             _generatePDB = generatePDB;
-            
+            _targetRID = crossGenTarget.RID;
+
             _platformAssembliesPaths = new List<string>();
             _platformAssembliesPaths.Add(AppDir);
             if (!string.IsNullOrEmpty(crossGenTarget.SharedFrameworkDir))
@@ -51,23 +53,43 @@ namespace Microsoft.DotNet.Tools.CrossGen.Outputs
                 Reporter.Verbose.WriteLine($"Looking for assets to CrossGen for library {lib.Name}.{lib.Version}");
                 foreach (var assetGroup in lib.RuntimeAssemblyGroups)
                 {
-                    // Is this needed?
-                    // var runtime = assetGroup.Runtime;
+                    var runtime = assetGroup.Runtime;
 
-                    // if (!string.IsNullOrEmpty(runtime) && runtime != _crossgenTarget.RID)
-                    // {
-                    //     Console.WriteLine($"Skipping asset group because it targets runtime {runtime}");
-                    // }
-                
+                    if (!string.IsNullOrEmpty(runtime) && runtime != _targetRID)
+                    {
+                        Reporter.Output.WriteLine($"Skipping assets [{string.Join(", ", assetGroup.AssetPaths)}] because targeted runtime was {runtime}");
+                    }
+
                     foreach (var assetPath in assetGroup.AssetPaths.Where(p => p.EndsWith(".dll")))
                     {
                         var fileName = Path.GetFileName(assetPath);
-                        // TODO: This is not right! Assets can be runtime-specific and in that case it wouldn't be in the AppDir
                         var sourcePath = Path.Combine(AppDir, fileName);
 
                         if (!File.Exists(sourcePath))
                         {
-                            throw new CrossGenException($"Assembly {fileName} not found in {AppDir}");
+                            var fileFound = false;
+
+                            // NOTE: We could add support to crossgening assemblies under "runtime" directory
+                            foreach (var subdir in Directory.GetDirectories(AppDir))
+                            {
+                                var fileLocation = Directory.GetFiles(subdir, fileName, SearchOption.AllDirectories).FirstOrDefault();
+
+                                if (fileLocation != null)
+                                {
+                                    Reporter.Output.WriteLine($"Assembly {fileName} found under directory {subdir}. Skipping crossgen for assemblies in subdirectories.");
+                                    fileFound = true;
+                                    break;
+                                }
+                            }
+
+                            if (fileFound)
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                throw new CrossGenException($"Assembly {fileName} not found in {AppDir}");
+                            }
                         }
 
                         if (!_crossGenCmds.ShouldExclude(sourcePath))

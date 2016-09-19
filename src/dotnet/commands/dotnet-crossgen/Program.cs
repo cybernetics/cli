@@ -48,7 +48,6 @@ namespace Microsoft.DotNet.Tools.CrossGen
 
                 if (generatePDB)
                 {
-                    VerifyRequired(diaSymReaderLocationParam);
                     VerifyPathIfGiven(diaSymReaderLocationParam);
                 }
                 var diaSymReaderLocation = diaSymReaderLocationParam.Value();

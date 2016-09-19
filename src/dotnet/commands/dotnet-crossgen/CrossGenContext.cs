@@ -2,13 +2,17 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.DotNet.Cli.Utils;
-using Microsoft.DotNet.InternalAbstractions;
+using Microsoft.DotNet.PlatformAbstractions;
 using Microsoft.DotNet.ProjectModel;
 using Microsoft.DotNet.Tools.CrossGen.Exceptions;
 using Microsoft.DotNet.Tools.CrossGen.Outputs;
 using Microsoft.Extensions.DependencyModel;
 using NuGet.Frameworks;
+
+using static Microsoft.DotNet.Tools.CrossGen.Operations.FileNameConstants;
 
 namespace Microsoft.DotNet.Tools.CrossGen
 {
@@ -37,6 +41,11 @@ namespace Microsoft.DotNet.Tools.CrossGen
 
         public void ExecuteCrossGen(string crossGenExe, string diaSymReaderDll, string outputDir, CrossGenOutputStructure structure, bool overwriteHash)
         {
+            if (_generatePDB && diaSymReaderDll == null)
+            {
+                diaSymReaderDll = FindDiaSymReader();
+            }
+
             CrossGenHandler outputHandler;
             switch (structure)
             {
@@ -102,6 +111,49 @@ namespace Microsoft.DotNet.Tools.CrossGen
             {
                 throw new CrossGenException($"App targets {_crossGenTarget.Framework.Framework} cannot be CrossGen'd, supported frameworks: [.NETCoreApp].");
             }
+        }
+
+        private string FindDiaSymReader()
+        {
+            var targetRid = _crossGenTarget.RID;
+            var hostDepContext = DependencyContext.Default;
+            var ridFallback = hostDepContext.RuntimeGraph.FirstOrDefault(fallback => fallback.Runtime == _crossGenTarget.RID);
+            IEnumerable<string> ridList = new string[] { targetRid };
+            if (ridFallback == null)
+            {
+                Reporter.Output.WriteLine($"Runtime {targetRid} fallback is not defined.");
+                ridList = new string[] { targetRid };
+            }
+            else
+            {
+                ridList = ridList.Concat(ridFallback.Fallbacks);
+            }
+
+            var arch = RuntimeEnvironment.RuntimeArchitecture;
+
+            var probeLocations = new string[] { Path.Combine(ApplicationEnvironment.ApplicationBasePath,
+                $"{DynamicLibPrefix}Microsoft.DiaSymReader.Native.{arch}{DynamicLibSuffix}") }.Concat(
+                    ridList.Select(rid => Path.Combine(ApplicationEnvironment.ApplicationBasePath,
+                        "runtimes", rid, "native", $"{DynamicLibPrefix}Microsoft.DiaSymReader.Native.{arch}{DynamicLibSuffix}")));
+
+            // x64, aka amd64
+            if (arch == "x64")
+            {
+                var archSuffix = $".{arch}{DynamicLibSuffix}";
+                probeLocations = probeLocations.Concat(
+                    probeLocations.Where(l => l.EndsWith(archSuffix))
+                                    .Select(l => l.Substring(0, l.Length - archSuffix.Length) + $".amd64{DynamicLibSuffix}"));
+            }
+
+            var foundLocation = probeLocations.FirstOrDefault(l => File.Exists(l));
+
+            if (foundLocation == null)
+            {
+                throw new CrossGenException($"Failed to locate DiaSymReader for runtime {targetRid}");
+            }
+
+            Reporter.Output.WriteLine($"Found DiaSymReader {foundLocation}");
+            return foundLocation;
         }
 
         ////////////////////////////////////////////////////////////////
